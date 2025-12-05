@@ -1,5 +1,6 @@
 // index.mjs
 
+import http from 'http';
 import 'dotenv/config';
 import { Telegraf } from 'telegraf';
 import {
@@ -7,6 +8,18 @@ import {
   secondSpinNoSubPrizes,
   secondSpinSubscribedPrizes,
 } from './prizes.mjs';
+
+// ===== DUMMY HTTP SERVER ДЛЯ RENDER =====
+const port = process.env.PORT || 10000;
+
+http
+  .createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('OK\n');
+  })
+  .listen(port, () => {
+    console.log(`Dummy HTTP server listening on port ${port}`);
+  });
 
 const CHANNEL_URL = 'https://t.me/formula_success_tg';
 const VIDEO_URL = 'https://t.me/formula_success_tg/93';
