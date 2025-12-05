@@ -4,7 +4,6 @@ import 'dotenv/config';
 import { Telegraf } from 'telegraf';
 import {
   selectRandomPrize,
-  firstSpinPrizes,
   secondSpinNoSubPrizes,
   secondSpinSubscribedPrizes,
 } from './prizes.mjs';
@@ -12,7 +11,10 @@ import {
 const CHANNEL_URL = 'https://t.me/formula_success_tg';
 const VIDEO_URL = 'https://t.me/formula_success_tg/93';
 const BOOK_URL = 'https://t.me/formula_success_tg/115';
-const FORM_URL = 'https://docs.google.com/forms/d/XXXXXXX'; // TODO: вставь свою форму
+const FORM_URL = 'https://docs.google.com/forms/d/XXXXXXX'; // TODO: вставь форму
+
+// сюда вставь либо URL, либо file_id картинки " +5 евро за 15 минут..."
+const FIRST_PRIZE_IMAGE = 'PUT_YOUR_COVER_URL_OR_FILE_ID_HERE';
 
 // ====== ИНИЦИАЛИЗАЦИЯ БОТА ======
 
@@ -24,17 +26,10 @@ if (!token) {
 
 const bot = new Telegraf(token);
 
-// ====== ТИПЫ / СЕССИИ (как в твоём коде) ======
+// ====== СЕССИИ ======
 
-/**
- * @typedef {'idle'|'first_spin_done'|'second_spin_done'|'book_paid'} UserStage
- */
-
-/**
- * @typedef UserSession
- * @property {UserStage} stage
- * @property {boolean} subscribed
- */
+/** @typedef {'idle'|'first_spin_done'|'second_spin_done'|'book_paid'} UserStage */
+/** @typedef {{ stage: UserStage, subscribed: boolean }} UserSession */
 
 /** @type {Map<string, UserSession>} */
 const sessions = new Map();
@@ -50,10 +45,6 @@ function getSession(chatId) {
 
 // ====== ХЕЛПЕРЫ СООБЩЕНИЙ ======
 
-/**
- * payload: { text: string, buttons?: { text: string }[][] }
- * Делаем обычную reply keyboard — Telegram отправляет текст кнопки.
- */
 async function sendMessageToChat(ctx, chatId, payload) {
   const { text, buttons } = payload;
 
@@ -72,14 +63,11 @@ async function sendMessageToChat(ctx, chatId, payload) {
   return ctx.telegram.sendMessage(chatId, text, extra);
 }
 
-/**
- * Отправка картинки с подписью + теми же кнопками.
- * photo: URL | file_id | путь к файлу
- */
 async function sendPhotoToChat(ctx, chatId, payload) {
   const { photo, caption, buttons } = payload;
 
-  let extra = {};
+  const extra = {};
+  if (caption) extra.caption = caption;
   if (buttons && buttons.length) {
     const keyboard = buttons.map((row) => row.map((btn) => btn.text));
     extra.reply_markup = {
@@ -88,12 +76,11 @@ async function sendPhotoToChat(ctx, chatId, payload) {
       one_time_keyboard: false,
     };
   }
-  if (caption) extra.caption = caption;
 
   return ctx.telegram.sendPhoto(chatId, photo, extra);
 }
 
-// ====== ТВОЯ ЛОГИКА ХЕНДЛЕРОВ ======
+// ====== ЛОГИКА ======
 
 async function sendStart(ctx, chatId) {
   await sendMessageToChat(ctx, chatId, {
@@ -105,14 +92,7 @@ async function sendStart(ctx, chatId) {
       `${VIDEO_URL}\n\n` +
       '3️⃣ Потом жми «Первый спин» — заберёшь стартовый приз.\n\n' +
       'После первого спина у тебя будет шанс усилить приз через подписку.',
-    buttons: [
-      [
-        {
-          text: '🎡 Первый спин',
-          id: 'first_spin',
-        },
-      ],
-    ],
+    buttons: [[{ text: '🎡 Первый спин', id: 'first_spin' }]],
   });
 }
 
@@ -135,20 +115,38 @@ async function handleFirstSpin(ctx, chatId) {
   session.stage = 'first_spin_done';
   session.subscribed = false;
 
-  const prize = selectRandomPrize(firstSpinPrizes);
+  const text =
+    '🍀 Удача сегодня на твоей стороне!\n' +
+    'Тебе выпал приз — 🎬 видео «Как обыграть рулетку».\n\n' +
+    'В нём я показываю в реальном времени метод,\n' +
+    'где не нужна «чуйка», а нужна формула:\n' +
+    '– как просчитать рулетку,\n' +
+    '– как выжать максимум из казино,\n' +
+    '– как наращивать банк,\n' +
+    '– когда повышать ставку.\n\n' +
+    'Смотри не на X2 — там каждая секунда важна.\n\n' +
+    `▶️ СМОТРЕТЬ ${VIDEO_URL}`;
 
-  await sendMessageToChat(ctx, chatId, {
-    text:
-      `${prize.emoji} Поздравляю!\n\n` +
-      `Тебе выпал приз: ${prize.title}\n\n` +
-      'Хочешь выжать из этого ещё один шанс и забрать подарок покруче?\n\n' +
-      `📲 Подпишись на канал: ${CHANNEL_URL}\n\n` +
-      'Потом нажми «Я подписался» — открою второй спин.',
-    buttons: [
-      [{ text: '✅ Я подписался', id: 'i_subscribed' }],
-      [{ text: '🙅 Крутить без подписки', id: 'spin_without_sub' }],
-    ],
-  });
+  const buttons = [
+    [{ text: '✅ Я подписался', id: 'i_subscribed' }],
+    [{ text: '🙅 Крутить без подписки', id: 'spin_without_sub' }],
+  ];
+
+  // если указана картинка — шлём картинку + caption
+  if (
+    FIRST_PRIZE_IMAGE &&
+    FIRST_PRIZE_IMAGE !== 'PUT_YOUR_COVER_URL_OR_FILE_ID_HERE'
+  ) {
+    await sendPhotoToChat(ctx, chatId, {
+      photo: FIRST_PRIZE_IMAGE,
+      caption:
+        '«+5 евро за 15 минут. Как обыграть рулетку»\n\n' + text,
+      buttons,
+    });
+  } else {
+    // иначе просто текст
+    await sendMessageToChat(ctx, chatId, { text, buttons });
+  }
 }
 
 async function handleSecondSpinWithoutSub(ctx, chatId) {
@@ -165,7 +163,7 @@ async function handleSecondSpinWithoutSub(ctx, chatId) {
   session.stage = 'second_spin_done';
   session.subscribed = false;
 
-  const prize = selectRandomPrize(secondSpinNoSubPrizes); // всегда prize2
+  const prize = selectRandomPrize(secondSpinNoSubPrizes);
 
   await sendMessageToChat(ctx, chatId, {
     text:
@@ -201,14 +199,6 @@ async function handleSecondSpinWithSub(ctx, chatId) {
     text,
     buttons: [[{ text: '💸 Получить книгу', id: 'buy_book' }]],
   });
-
-  // Пример: сюда можно дополнительно отправить картинку-обложку книги.
-  // Заменишь 'https://example.com/cover.jpg' на свой URL или file_id.
-  // await sendPhotoToChat(ctx, chatId, {
-  //   photo: 'https://example.com/cover.jpg',
-  //   caption: 'Обложка книги',
-  //   buttons: [[{ text: '💸 Получить книгу', id: 'buy_book' }]]
-  // });
 }
 
 async function handleUserSubscribed(ctx, chatId) {
@@ -254,13 +244,6 @@ async function handleBuyBook(ctx, chatId) {
       'Напиши слово «ФОРМУЛА», и я разберу твою ситуацию лично.',
     buttons: [[{ text: 'ФОРМУЛА', id: 'formula' }]],
   });
-
-  // При желании можно здесь тоже кинуть обложку:
-  // await sendPhotoToChat(ctx, chatId, {
-  //   photo: 'https://example.com/cover.jpg',
-  //   caption: 'Книга отправлена, смотри по ссылке выше 👆',
-  //   buttons: [[{ text: 'ФОРМУЛА', id: 'formula' }]]
-  // });
 }
 
 async function handleFormula(ctx, chatId) {
@@ -285,9 +268,8 @@ async function handleFormula(ctx, chatId) {
   );
 }
 
-// ====== МАРШРУТИЗАЦИЯ СООБЩЕНИЙ ======
+// ====== МАРШРУТИЗАЦИЯ ======
 
-// /start
 bot.start(async (ctx) => {
   const chatId = String(ctx.chat.id);
   const session = getSession(chatId);
@@ -296,14 +278,12 @@ bot.start(async (ctx) => {
   await sendStart(ctx, chatId);
 });
 
-// Любой текст
 bot.on('text', async (ctx) => {
   const chatId = String(ctx.chat.id);
   const rawText = (ctx.message.text || '').trim();
   const text = rawText;
   const lower = text.toLowerCase();
 
-  // Первый спин
   if (
     text === '/spin' ||
     text === '🎡 Крутить колесо!' ||
@@ -315,7 +295,6 @@ bot.on('text', async (ctx) => {
     return;
   }
 
-  // "Я подписался"
   if (
     lower === 'я подписался' ||
     lower === 'я всё-таки подписался' ||
@@ -327,7 +306,6 @@ bot.on('text', async (ctx) => {
     return;
   }
 
-  // Второй спин без подписки
   if (
     text === '🙅 Крутить без подписки' ||
     lower === 'крутить без подписки' ||
@@ -337,7 +315,6 @@ bot.on('text', async (ctx) => {
     return;
   }
 
-  // Покупка книги
   if (
     text === '💸 Получить книгу' ||
     lower === 'получить книгу' ||
@@ -347,13 +324,11 @@ bot.on('text', async (ctx) => {
     return;
   }
 
-  // Формула
   if (lower === 'формула' || text === 'formula') {
     await handleFormula(ctx, chatId);
     return;
   }
 
-  // Фоллбек
   await sendMessageToChat(ctx, chatId, {
     text:
       'Используй кнопки ниже:\n' +
@@ -363,17 +338,16 @@ bot.on('text', async (ctx) => {
   });
 });
 
-// Глобальный catch
+// ====== ЗАПУСК ======
+
 bot.catch((err, ctx) => {
   console.error(`Bot error for update ${ctx.updateType}`, err);
 });
 
-// Запуск long polling
 bot.launch().then(() => {
   console.log('Bot started with long polling');
 });
 
-// Корректное завершение
 process.once('SIGINT', () => {
   bot.stop('SIGINT');
   process.exit(0);
